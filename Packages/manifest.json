@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.unity.ide.rider": "3.0.24",
     "com.unity.modules.physics": "1.0.0"
   }
 }

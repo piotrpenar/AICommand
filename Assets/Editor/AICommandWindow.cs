@@ -1,92 +1,134 @@
-using UnityEngine;
-using UnityEditor;
+using System.IO;
 using System.Reflection;
+using UnityEditor;
+using UnityEngine;
 
-namespace AICommand {
-
-public sealed class AICommandWindow : EditorWindow
+namespace AICommand
 {
-    #region Temporary script file operations
-
-    const string TempFilePath = "Assets/AICommandTemp.cs";
-
-    bool TempFileExists => System.IO.File.Exists(TempFilePath);
-
-    void CreateScriptAsset(string code)
+    public sealed class AICommandWindow : EditorWindow
     {
-        // UnityEditor internal method: ProjectWindowUtil.CreateScriptAssetWithContent
-        var flags = BindingFlags.Static | BindingFlags.NonPublic;
-        var method = typeof(ProjectWindowUtil).GetMethod("CreateScriptAssetWithContent", flags);
-        method.Invoke(null, new object[]{TempFilePath, code});
-    }
+        #region Private Fields
 
-    #endregion
+        private static string prompt = "Create 100 cubes at random points.";
 
-    #region Script generator
+        private string code;
 
-    static string WrapPrompt(string input)
-      => "Write a Unity Editor script.\n" +
-         " - It provides its functionality as a menu item placed \"Edit\" > \"Do Task\".\n" +
-         " - It doesn’t provide any editor window. It immediately does the task when the menu item is invoked.\n" +
-         " - Don’t use GameObject.FindGameObjectsWithTag.\n" +
-         " - There is no selected object. Find game objects manually.\n" +
-         " - I only need the script body. Don’t add any explanation.\n" +
-         "The task is described as follows:\n" + input;
+        #endregion
 
-    void RunGenerator()
-    {
-        var code = OpenAIUtil.InvokeChat(WrapPrompt(_prompt));
-        Debug.Log("AI command script:" + code);
-        CreateScriptAsset(code);
-    }
+        #region Constants
 
-    #endregion
+        private const string TempFilePath = "Assets/AICommandTemp.cs";
 
-    #region Editor GUI
+        private const string ApiKeyErrorText = "API Key hasn't been set. Please check the project settings " + "(Edit > Project Settings > AI Command > API Key).";
 
-    string _prompt = "Create 100 cubes at random points.";
+        public static ModelType modelType = ModelType.Gpt4;
 
-    const string ApiKeyErrorText =
-      "API Key hasn't been set. Please check the project settings " +
-      "(Edit > Project Settings > AI Command > API Key).";
+        #endregion
 
-    bool IsApiKeyOk
-      => !string.IsNullOrEmpty(AICommandSettings.instance.apiKey);
+        private bool TempFileExists => File.Exists(TempFilePath);
 
-    [MenuItem("Window/AI Command")]
-    static void Init() => GetWindow<AICommandWindow>(true, "AI Command");
+        private bool IsApiKeyOk => !string.IsNullOrEmpty(AICommandSettings.instance.apiKey);
 
-    void OnGUI()
-    {
-        if (IsApiKeyOk)
+        #region Unity Callbacks
+
+        private void OnGUI()
         {
-            _prompt = EditorGUILayout.TextArea(_prompt, GUILayout.ExpandHeight(true));
-            if (GUILayout.Button("Run")) RunGenerator();
+            if (IsApiKeyOk)
+            {
+                prompt = EditorGUILayout.TextArea(prompt, GUILayout.ExpandHeight(true));
+                EditorGUILayout.EnumPopup("Model To Use", modelType);
+
+                if (modelType == ModelType.Gpt4)
+                {
+                    EditorGUILayout.HelpBox("Ensure you have approved API access to GPT-4, or the command will fail!", MessageType.Info);
+                }
+
+                if (GUILayout.Button("Run"))
+                {
+                    RunGenerator();
+                }
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(ApiKeyErrorText, MessageType.Error);
+            }
         }
-        else
+
+        private void OnEnable() => AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+
+        private void OnDisable() => AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
+
+        private void OnDestroy()
         {
-            EditorGUILayout.HelpBox(ApiKeyErrorText, MessageType.Error);
+            AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
         }
+
+        #endregion
+
+        #region Private Methods
+
+        private void CreateScriptAsset(string targetCode)
+        {
+            // UnityEditor internal method: ProjectWindowUtil.CreateScriptAssetWithContent
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            MethodInfo method = typeof(ProjectWindowUtil).GetMethod("CreateScriptAssetWithContent", flags);
+
+            if (method != null)
+            {
+                method.Invoke(null, new object[] { TempFilePath, targetCode });
+            }
+        }
+
+        private static string WrapPrompt(string input) =>
+            "Write a Unity Editor script with the following specifications:\n" +
+            " - The script should provide its functionality as a menu item placed in the \"Edit\" menu, with the label \"Do Task\".\n" +
+            " - The script should not create or utilize any editor windows. Instead, the designated task should be executed immediately when the menu item is invoked.\n" +
+            " - Do not use GameObject.FindGameObjectsWithTag in the script.\n" +
+            " - Assume all objects are not tagged.\n" +
+            " - The script should not rely on a currently selected object. Instead, find the relevant game objects manually within the script.\n" +
+            " - Provide only the body of the script without any additional explanations or comments. .\n" +
+            " - Do not use any type of markdown or code formating - return just the C# code in plain text. Do not write 'csharp'. \n" + 
+            "The task for the script to perform is described as follows:\n" + 
+            input;
+
+        private void RunGenerator()
+        {
+            
+            AICommandSettings settings = AICommandSettings.instance;
+            string code = OpenAIUtil.InvokeChat(WrapPrompt(prompt), modelType,settings);
+            code = PostProcessGeneratedCode(code); // Add this line
+            Debug.Log("AI command script:" + code);
+            CreateScriptAsset(code);
+        }
+
+        private string PostProcessGeneratedCode(string code)
+        {
+            // Remove unexpected characters
+            code = code.Replace("`", "");
+
+            // Make sure the script starts with 'using' statements or a namespace declaration
+            if (!code.TrimStart().StartsWith("using") && !code.TrimStart().StartsWith("namespace"))
+            {
+                code = "using UnityEngine;\nusing UnityEditor;\n\n" + code;
+            }
+
+            return code;
+        }
+
+        [MenuItem("Window/AI Command/Editor Command")]
+        private static void Init() => GetWindow<AICommandWindow>(true, "AI Command");
+
+        private void OnAfterAssemblyReload()
+        {
+            if (!TempFileExists)
+            {
+                return;
+            }
+
+            EditorApplication.ExecuteMenuItem("Edit/Do Task");
+            AssetDatabase.DeleteAsset(TempFilePath);
+        }
+
+        #endregion
     }
-
-    #endregion
-
-    #region Script lifecycle
-
-    void OnEnable()
-      => AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
-
-    void OnDisable()
-      => AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
-
-    void OnAfterAssemblyReload()
-    {
-        if (!TempFileExists) return;
-        EditorApplication.ExecuteMenuItem("Edit/Do Task");
-        AssetDatabase.DeleteAsset(TempFilePath);
-    }
-
-    #endregion
-}
-
 } // namespace AICommand

@@ -1,46 +1,65 @@
-using UnityEngine;
 using UnityEditor;
 
-namespace AICommand {
-
-[FilePath("UserSettings/AICommandSettings.asset",
-          FilePathAttribute.Location.ProjectFolder)]
-public sealed class AICommandSettings : ScriptableSingleton<AICommandSettings>
+namespace AICommand
 {
-    public string apiKey = null;
-    public int timeout = 0;
-    public void Save() => Save(true);
-    void OnDisable() => Save();
-}
-
-sealed class AICommandSettingsProvider : SettingsProvider
-{
-    public AICommandSettingsProvider()
-      : base("Project/AI Command", SettingsScope.Project) {}
-
-    public override void OnGUI(string search)
+    [FilePath("UserSettings/AICommandSettings.asset", FilePathAttribute.Location.ProjectFolder)]
+    public sealed class AICommandSettings : ScriptableSingleton<AICommandSettings>
     {
-        var settings = AICommandSettings.instance;
+        public string apiKey;
+        public int timeout;
 
-        var key = settings.apiKey;
-        var timeout = settings.timeout;
+        #region Unity Callbacks
 
-        EditorGUI.BeginChangeCheck();
+        private void OnDisable() => Save();
 
-        key = EditorGUILayout.TextField("API Key", key);
-        timeout = EditorGUILayout.IntField("Timeout", timeout);
+        #endregion
 
-        if (EditorGUI.EndChangeCheck())
-        {
-            settings.apiKey = key;
-            settings.timeout = timeout;
-            settings.Save();
-        }
+        #region Public Methods
+
+        public void Save() => Save(true);
+
+        #endregion
     }
 
-    [SettingsProvider]
-    public static SettingsProvider CreateCustomSettingsProvider()
-      => new AICommandSettingsProvider();
-}
+    internal sealed class AICommandSettingsProvider : SettingsProvider
+    {
+        #region Constructors
 
-} // namespace AICommand
+        public AICommandSettingsProvider() : base("Project/AI Command", SettingsScope.Project)
+        {
+        }
+
+        #endregion
+
+        #region Unity Callbacks
+
+        public override void OnGUI(string search)
+        {
+            AICommandSettings settings = AICommandSettings.instance;
+
+            string key = settings.apiKey;
+            int timeout = settings.timeout;
+
+            EditorGUI.BeginChangeCheck();
+
+            key = EditorGUILayout.TextField("API Key", key);
+            timeout = EditorGUILayout.IntField("Timeout", timeout);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                settings.apiKey = key;
+                settings.timeout = timeout;
+                settings.Save();
+            }
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        [SettingsProvider]
+        public static SettingsProvider CreateCustomSettingsProvider() => new AICommandSettingsProvider();
+
+        #endregion
+    }
+}

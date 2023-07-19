@@ -1,56 +1,87 @@
-using UnityEngine;
+
+using System.Threading;
+using AICommand.OpenAI;
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.Networking;
 
-namespace AICommand {
-
-static class OpenAIUtil
+namespace AICommand
 {
-    static string CreateChatRequestBody(string prompt)
+    public enum ModelType
     {
-        var msg = new OpenAI.RequestMessage();
-        msg.role = "user";
-        msg.content = prompt;
-
-        var req = new OpenAI.Request();
-        req.model = "gpt-3.5-turbo";
-        req.messages = new [] { msg };
-
-        return JsonUtility.ToJson(req);
+        Gpt4,
+        Gpt35Turbo
     }
 
-    public static string InvokeChat(string prompt)
+    //Dictionary for the ModelType to the string used by the API
+    internal static class ModelTypeDict
     {
-        var settings = AICommandSettings.instance;
+        #region Public Methods
 
-        // POST
-        using var post = UnityWebRequest.Post
-          (OpenAI.Api.Url, CreateChatRequestBody(prompt), "application/json");
-
-        // Request timeout setting
-        post.timeout = settings.timeout;
-
-        // API key authorization
-        post.SetRequestHeader("Authorization", "Bearer " + settings.apiKey);
-
-        // Request start
-        var req = post.SendWebRequest();
-
-        // Progress bar (Totally fake! Don't try this at home.)
-        for (var progress = 0.0f; !req.isDone; progress += 0.01f)
+        public static string GetModelTypeString(ModelType modelType)
         {
-            EditorUtility.DisplayProgressBar
-              ("AI Command", "Generating...", progress);
-            System.Threading.Thread.Sleep(100);
-            progress += 0.01f;
+            switch (modelType)
+            {
+                case ModelType.Gpt4 :
+                    return "gpt-4";
+                default :
+                    return "gpt-3.5-turbo";
+            }
         }
-        EditorUtility.ClearProgressBar();
 
-        // Response extraction
-        var json = post.downloadHandler.text;
-        var data = JsonUtility.FromJson<OpenAI.Response>(json);
-        return data.choices[0].message.content;
+        #endregion
+    }
+
+    internal static class OpenAIUtil
+    {
+        #region Public Methods
+
+        public static string InvokeChat(string prompt, ModelType modelType,AICommandSettings settings)
+        {
+
+            // POST
+            using UnityWebRequest post = UnityWebRequest.Post(Api.Url, CreateChatRequestBody(prompt, modelType), "application/json");
+
+            // Request timeout setting
+            post.timeout = settings.timeout;
+
+            // API key authorization
+            post.SetRequestHeader("Authorization", "Bearer " + settings.apiKey);
+
+            // Request start
+            UnityWebRequestAsyncOperation req = post.SendWebRequest();
+
+            // Progress bar (Totally fake! Don't try this at home.)
+            for (float progress = 0.0f; !req.isDone; progress += 0.01f)
+            {
+                EditorUtility.DisplayProgressBar("AI Command", "Generating...", progress);
+                Thread.Sleep(100);
+                progress += 0.01f;
+            }
+
+            EditorUtility.ClearProgressBar();
+
+            // Response extraction
+            string json = post.downloadHandler.text;
+            Response data = JsonUtility.FromJson<Response>(json);
+
+            return data.choices[0].message.content;
+        }
+
+        #endregion
+
+        #region Private Methods
+
+        private static string CreateChatRequestBody(string prompt, ModelType modelType)
+        {
+            RequestMessage msg = new RequestMessage { role = "user", content = prompt };
+
+            Request req = new Request { model = ModelTypeDict.GetModelTypeString(modelType), messages = new[] { msg }, temperature = 0.3f };
+
+            return JsonUtility.ToJson(req);
+        }
+
+        #endregion
     }
 }
-
-} // namespace AICommand
+// namespace AICommand

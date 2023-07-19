@@ -1,42 +1,50 @@
+
+using System;
+
 namespace AICommand.OpenAI
 {
     public static class Api
     {
+        #region Constants
+
         public const string Url = "https://api.openai.com/v1/chat/completions";
+
+        #endregion
     }
 
-    [System.Serializable]
+    [Serializable]
     public struct ResponseMessage
     {
-        public string role;
         public string content;
+        public string role;
     }
 
-    [System.Serializable]
+    [Serializable]
     public struct ResponseChoice
     {
         public int index;
         public ResponseMessage message;
     }
 
-    [System.Serializable]
+    [Serializable]
     public struct Response
     {
-        public string id;
         public ResponseChoice[] choices;
+        public string id;
     }
 
-    [System.Serializable]
+    [Serializable]
     public struct RequestMessage
     {
-        public string role;
         public string content;
+        public string role;
     }
 
-    [System.Serializable]
+    [Serializable]
     public struct Request
     {
-        public string model;
         public RequestMessage[] messages;
+        public string model;
+        public float temperature;
     }
 }
